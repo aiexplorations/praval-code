@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="An illustrated, source-linked guide to the Mistral Vibe architecture and agent loop.">
+  <title>Inside Mistral Vibe — an illustrated architecture guide</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d0f;
+      --surface: #12161a;
+      --surface-2: #181d22;
+      --surface-3: #20262d;
+      --ink: #f5f1e8;
+      --muted: #a9b0b7;
+      --line: #303840;
+      --orange: #ff7a3d;
+      --orange-soft: #ffb187;
+      --mint: #5ce1b9;
+      --blue: #72b7ff;
+      --yellow: #ffd66b;
+      --violet: #c6a7ff;
+      --red: #ff758f;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+      --radius: 18px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 82% 8%, rgba(255, 122, 61, .13), transparent 28rem),
+        radial-gradient(circle at 15% 32%, rgba(92, 225, 185, .07), transparent 24rem),
+        var(--bg);
+      font: 16px/1.65 var(--sans);
+    }
+    body.light {
+      color-scheme: light;
+      --bg: #f4f0e8;
+      --surface: #fffdf8;
+      --surface-2: #f2eee5;
+      --surface-3: #e8e2d7;
+      --ink: #1d2329;
+      --muted: #5c6670;
+      --line: #d4cdc0;
+      --orange: #cf4f19;
+      --orange-soft: #a93c0f;
+      --mint: #087e63;
+      --blue: #1769aa;
+      --yellow: #946b00;
+      --violet: #7044af;
+      --red: #bd2845;
+      --shadow: 0 18px 50px rgba(37, 29, 18, .1);
+    }
+    a { color: inherit; }
+    button { font: inherit; }
+    code, pre { font-family: var(--mono); }
+    code {
+      color: var(--orange-soft);
+      background: color-mix(in srgb, var(--surface-3) 82%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: .1rem .35rem;
+      font-size: .9em;
+    }
+    pre {
+      margin: 1rem 0 0;
+      padding: 1rem 1.1rem;
+      overflow: auto;
+      color: #d8f8ed;
+      background: #090c0d;
+      border: 1px solid #2c3538;
+      border-radius: 12px;
+      line-height: 1.55;
+      font-size: .86rem;
+    }
+    body.light pre { color: #e9fff8; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 880px;
+      margin-bottom: 1.2rem;
+      font-size: clamp(3.2rem, 8vw, 7.2rem);
+      line-height: .92;
+      letter-spacing: -.075em;
+    }
+    h2 {
+      margin-bottom: 1rem;
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      line-height: 1;
+      letter-spacing: -.045em;
+    }
+    h3 { margin-bottom: .55rem; font-size: 1.04rem; letter-spacing: -.01em; }
+    p { color: var(--muted); }
+    strong { color: var(--ink); }
+
+    .topbar {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 58px;
+      padding: .6rem clamp(1rem, 4vw, 3.5rem);
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+      background: color-mix(in srgb, var(--bg) 86%, transparent);
+      backdrop-filter: blur(16px);
+    }
+    .brand { display: flex; align-items: center; gap: .7rem; font-weight: 750; }
+    .mark {
+      display: grid;
+      width: 27px;
+      height: 27px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+    }
+    .mark span { background: var(--orange); }
+    .mark span:nth-child(2), .mark span:nth-child(4), .mark span:nth-child(6), .mark span:nth-child(8) { opacity: .4; }
+    .top-actions { display: flex; align-items: center; gap: .6rem; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: .5rem .8rem;
+      color: var(--ink);
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .button:hover, .button:focus-visible { border-color: var(--orange); outline: none; }
+
+    .hero, main, .footer-inner { width: min(1180px, calc(100% - 2rem)); margin-inline: auto; }
+    .hero { padding: clamp(5rem, 12vw, 10rem) 0 5rem; }
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+      margin-bottom: 1.7rem;
+      color: var(--orange-soft);
+      font-family: var(--mono);
+      font-size: .77rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--orange); }
+    .lead { max-width: 750px; font-size: clamp(1.05rem, 2vw, 1.35rem); }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 2rem 0 3.2rem; }
+    .button.primary { color: #160a05; border-color: var(--orange); background: var(--orange); font-weight: 800; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); border-block: 1px solid var(--line); }
+    .stat { padding: 1.25rem 1rem; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat b { display: block; color: var(--ink); font-size: 1.5rem; line-height: 1.1; }
+    .stat span { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
+
+    .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 3.5rem; align-items: start; }
+    .toc { position: sticky; top: 82px; padding-bottom: 2rem; }
+    .toc-label { color: var(--muted); font: 700 .7rem var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .toc a {
+      display: block;
+      padding: .42rem 0 .42rem .85rem;
+      color: var(--muted);
+      text-decoration: none;
+      border-left: 1px solid var(--line);
+      font-size: .87rem;
+    }
+    .toc a:hover, .toc a.active { color: var(--ink); border-left-color: var(--orange); }
+    .content { min-width: 0; }
+    section { padding: 1.2rem 0 6rem; scroll-margin-top: 86px; }
+    .section-head { display: grid; grid-template-columns: 1fr minmax(220px, 440px); gap: 2rem; align-items: end; margin-bottom: 2rem; }
+    .section-head p { margin-bottom: .2rem; }
+    .section-no { color: var(--orange); font: 700 .75rem var(--mono); letter-spacing: .14em; }
+
+    .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+    .card {
+      padding: 1.35rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 95%, transparent), color-mix(in srgb, var(--surface-2) 90%, transparent));
+      box-shadow: var(--shadow);
+    }
+    .card p:last-child { margin-bottom: 0; }
+    .card .kicker { margin-bottom: .7rem; color: var(--mint); font: 700 .72rem var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .card.orange .kicker { color: var(--orange-soft); }
+    .card.blue .kicker { color: var(--blue); }
+    .card.violet .kicker { color: var(--violet); }
+    .card.yellow .kicker { color: var(--yellow); }
+    .card.red .kicker { color: var(--red); }
+
+    .thesis {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 1px;
+      overflow: hidden;
+      margin: 2rem 0;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--line);
+    }
+    .thesis > div { padding: clamp(1.4rem, 4vw, 2.5rem); background: var(--surface); }
+    .thesis .big { color: var(--ink); font-size: clamp(1.3rem, 2.3vw, 2rem); line-height: 1.3; }
+    .tag-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .tag { padding: .3rem .62rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; font: .72rem var(--mono); }
+
+    .arch {
+      overflow-x: auto;
+      padding: 1.2rem;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .arch-grid { display: grid; min-width: 780px; grid-template-columns: repeat(12, 1fr); gap: .8rem; }
+    .node {
+      position: relative;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--surface-2);
+    }
+    .node b { display: block; margin-bottom: .2rem; }
+    .node small { display: block; color: var(--muted); line-height: 1.4; }
+    .node.surface { grid-column: span 4; border-top: 3px solid var(--blue); }
+    .node.protocol { grid-column: 3 / span 8; border-top: 3px solid var(--violet); text-align: center; }
+    .node.server { grid-column: 2 / span 10; border-top: 3px solid var(--orange); }
+    .node.core { grid-column: span 3; border-top: 3px solid var(--mint); }
+    .connector { grid-column: 1 / -1; color: var(--muted); text-align: center; font: .75rem var(--mono); letter-spacing: .08em; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 0 1rem;
+      counter-reset: steps;
+    }
+    .flow-item { display: contents; counter-increment: steps; }
+    .flow-marker { position: relative; display: flex; justify-content: center; }
+    .flow-marker::before {
+      content: counter(steps);
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      color: #180b05;
+      background: var(--orange);
+      border-radius: 50%;
+      font: 800 .8rem var(--mono);
+    }
+    .flow-marker::after { content: ""; position: absolute; top: 32px; bottom: 0; width: 1px; background: var(--line); }
+    .flow-item:last-child .flow-marker::after { display: none; }
+    .flow-body { padding: .2rem 0 1.7rem; }
+    .flow-body p { margin-bottom: .3rem; }
+    .path { color: var(--blue); font: .78rem var(--mono); overflow-wrap: anywhere; }
+
+    .loop-visual { display: grid; grid-template-columns: repeat(6, minmax(125px, 1fr)); gap: .65rem; margin: 1.5rem 0; }
+    .loop-step { min-height: 140px; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .loop-step .num { color: var(--orange); font: 800 .75rem var(--mono); }
+    .loop-step b { display: block; margin: .65rem 0 .3rem; line-height: 1.2; }
+    .loop-step small { color: var(--muted); }
+    .loop-step:nth-child(4) { border-color: color-mix(in srgb, var(--mint) 60%, var(--line)); }
+    .loop-back { grid-column: 4 / 7; color: var(--mint); text-align: center; font: 700 .76rem var(--mono); }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: .85rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+    th { color: var(--muted); font: 700 .7rem var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    td { color: var(--muted); }
+    td:first-child { color: var(--ink); font-weight: 700; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+
+    .tabs { margin-top: 1.5rem; }
+    .tablist { display: flex; gap: .45rem; overflow-x: auto; padding-bottom: .7rem; }
+    .tab {
+      flex: 0 0 auto;
+      padding: .55rem .8rem;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .tab[aria-selected="true"] { color: #180b05; border-color: var(--orange); background: var(--orange); font-weight: 800; }
+    .tabpanel { display: none; padding: 1.4rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .tabpanel.active { display: block; }
+
+    .callout { padding: 1.1rem 1.2rem; border-left: 3px solid var(--yellow); background: color-mix(in srgb, var(--yellow) 7%, var(--surface)); border-radius: 0 12px 12px 0; }
+    .callout p { margin: 0; }
+    .callout.danger { border-left-color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--surface)); }
+    .callout.good { border-left-color: var(--mint); background: color-mix(in srgb, var(--mint) 7%, var(--surface)); }
+
+    .layer-stack { display: grid; gap: .55rem; max-width: 800px; margin: 1.5rem auto; }
+    .layer {
+      display: grid;
+      grid-template-columns: 40px 180px 1fr;
+      gap: 1rem;
+      align-items: center;
+      padding: .85rem 1rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .layer b:first-child { color: var(--orange); font: 800 .8rem var(--mono); }
+    .layer:last-child { border-color: var(--red); }
+
+    .tree { padding: 1.2rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .tree-row { display: grid; grid-template-columns: minmax(210px, .85fr) 1.5fr; gap: 1rem; padding: .72rem 0; border-bottom: 1px dashed var(--line); }
+    .tree-row:last-child { border-bottom: 0; }
+    .tree-row code { align-self: start; width: fit-content; }
+
+    .source-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: .7rem; }
+    .source-link { display: block; padding: .9rem 1rem; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+    .source-link:hover { color: var(--ink); border-color: var(--blue); }
+    .source-link b { display: block; color: var(--blue); font: .76rem var(--mono); }
+
+    footer { margin-top: 2rem; border-top: 1px solid var(--line); }
+    .footer-inner { display: flex; justify-content: space-between; gap: 2rem; padding: 2rem 0 3rem; }
+    .footer-inner p { margin: 0; font-size: .83rem; }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc { display: none; }
+      .card-grid { grid-template-columns: 1fr 1fr; }
+      .loop-visual { grid-template-columns: repeat(3, 1fr); }
+      .loop-back { grid-column: 1 / -1; }
+    }
+    @media (max-width: 640px) {
+      .topbar { padding-inline: .8rem; }
+      .top-actions .repo-label { display: none; }
+      .hero { padding-top: 4rem; }
+      .stats, .card-grid, .thesis, .section-head { grid-template-columns: 1fr; }
+      .stat { border-right: 0; border-bottom: 1px solid var(--line); }
+      .stat:last-child { border-bottom: 0; }
+      .loop-visual { grid-template-columns: 1fr 1fr; }
+      .layer { grid-template-columns: 30px 1fr; }
+      .layer span { grid-column: 2; }
+      .source-list { grid-template-columns: 1fr; }
+      .tree-row { grid-template-columns: 1fr; }
+      .footer-inner { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+      <span>Mistral Vibe / architecture tour</span>
+    </div>
+    <div class="top-actions">
+      <button class="button" id="theme-toggle" type="button" aria-label="Switch color theme">☼</button>
+      <a class="button" href="https://github.com/mistralai/mistral-vibe"><span class="repo-label">Open </span>GitHub ↗</a>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="eyebrow">Source-guided field notes · v2.25.8</div>
+    <h1>How Vibe<br>actually works.</h1>
+    <p class="lead">A visual tour of Mistral’s open-source coding agent: from a keystroke in the terminal, across its app-server boundary, through the model-and-tool loop, and back as a streamed, durable session.</p>
+    <div class="hero-actions">
+      <a class="button primary" href="#mental-model">Start the tour ↓</a>
+      <a class="button" href="#source-map">Jump to source map</a>
+    </div>
+    <div class="stats" aria-label="Repository snapshot">
+      <div class="stat"><b>Python 3.12+</b><span>Primary runtime</span></div>
+      <div class="stat"><b>3 surfaces</b><span>Textual · Rust · ACP</span></div>
+      <div class="stat"><b>JSON-RPC 2.0</b><span>Runtime boundary</span></div>
+      <div class="stat"><b>Apache-2.0</b><span>Open source</span></div>
+    </div>
+  </div>
+
+  <main class="layout">
+    <nav class="toc" aria-label="On this page">
+      <p class="toc-label">Trace the system</p>
+      <a href="#mental-model">Mental model</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#startup">Startup</a>
+      <a href="#turn">One agent turn</a>
+      <a href="#tools">Tools & safety</a>
+      <a href="#context">Context & memory</a>
+      <a href="#configuration">Configuration</a>
+      <a href="#extensions">Extensions</a>
+      <a href="#surfaces">Delivery surfaces</a>
+      <a href="#source-map">Source map</a>
+      <a href="#learn">Learning path</a>
+      <a href="#sources">Sources</a>
+    </nav>
+
+    <div class="content">
+      <section id="mental-model">
+        <div class="section-head">
+          <div><span class="section-no">01 / MENTAL MODEL</span><h2>Not a chatbot.<br>A controlled runtime.</h2></div>
+          <p>Vibe is a local orchestration system around an LLM. The model proposes text and typed tool calls; Vibe owns permissions, execution, state, persistence, and presentation.</p>
+        </div>
+        <div class="thesis">
+          <div>
+            <p class="big"><strong>The key idea:</strong> the model never directly edits a file or runs a command. It emits a structured request. Vibe validates it, applies policy, may ask you, executes it, records the result, and sends that result back to the model.</p>
+          </div>
+          <div>
+            <div class="tag-row">
+              <span class="tag">local-first</span><span class="tag">async</span><span class="tag">typed events</span><span class="tag">permissioned tools</span><span class="tag">streaming</span><span class="tag">multi-surface</span><span class="tag">resumable</span><span class="tag">extensible</span>
+            </div>
+          </div>
+        </div>
+        <div class="card-grid">
+          <article class="card orange"><p class="kicker">Model</p><h3>Chooses the next action</h3><p>Receives the system prompt, conversation, tool schemas, and project context. It streams prose, reasoning, and function calls.</p></article>
+          <article class="card"><p class="kicker">Harness</p><h3>Owns execution</h3><p>The app server owns sessions, turns, callbacks, resources, queueing, projections, and cleanup across every client.</p></article>
+          <article class="card blue"><p class="kicker">Client</p><h3>Renders and participates</h3><p>The terminal or IDE displays public events, gathers approvals and answers, and can provide explicitly advertised local I/O.</p></article>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <div class="section-head">
+          <div><span class="section-no">02 / ARCHITECTURE</span><h2>One engine.<br>Several faces.</h2></div>
+          <p>The repository follows a pragmatic hexagonal design. Core logic points inward; terminal frameworks, protocols, providers, filesystems, and subprocesses stay at the edges.</p>
+        </div>
+        <div class="arch" aria-label="Architecture diagram">
+          <div class="arch-grid">
+            <div class="node surface"><b>Python Textual TUI</b><small>Widgets, keyboard input, local presentation, voice controls</small></div>
+            <div class="node surface"><b>Rust Ratatui TUI</b><small>Thin client with Action → reduce → Effect state flow</small></div>
+            <div class="node surface"><b>ACP / programmatic</b><small>IDE protocol translation and headless output</small></div>
+            <div class="connector">CLIENT REQUESTS ⇅ STREAMED EVENTS · CALLBACKS · CLIENT TOOLS</div>
+            <div class="node protocol"><b>Public app-server API</b><small>Strict camel-case models over serialized JSON-RPC 2.0 · in-process queues or stdio</small></div>
+            <div class="connector">AUTHORITATIVE SESSION BOUNDARY</div>
+            <div class="node server"><b>vibe.app_server</b><small>Session lifecycle · turn queue · public projections · callback routing · resources · backend selection · cleanup</small></div>
+            <div class="connector">COMPOSES AND PROJECTS</div>
+            <div class="node core"><b>Agent loop</b><small>Conversation and model/tool cycle</small></div>
+            <div class="node core"><b>Tool runtime</b><small>Typed calls, policy, hooks, execution</small></div>
+            <div class="node core"><b>Config & agents</b><small>Layered effective runtime policy</small></div>
+            <div class="node core"><b>Sessions</b><small>Logs, checkpoints, compaction, rewind</small></div>
+          </div>
+        </div>
+        <div class="callout good" style="margin-top:1rem"><p><strong>The app server is a source boundary, not necessarily a remote service.</strong> Even the in-process Python client serializes JSON values through the same protocol, preventing the UI from depending on live core objects.</p></div>
+      </section>
+
+      <section id="startup">
+        <div class="section-head">
+          <div><span class="section-no">03 / STARTUP</span><h2>From <code>vibe</code><br>to a live session.</h2></div>
+          <p>Startup is deliberately lazy. Heavy UI, MCP, connector, and runtime work is delayed until the selected path needs it.</p>
+        </div>
+        <div class="flow">
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Tiny launcher selects a terminal</h3><p><code>VIBE_CLI=rust</code> execs the Rust binary; otherwise the Python entrypoint is imported. Setup and update checks stay Python-only.</p><div class="path">vibe/cli/launcher.py</div></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Bootstrap local state</h3><p>Vibe secures its home directory, loads environment credentials, resolves the working directory or worktree, initializes logging, and prepares trusted project sources.</p><div class="path">vibe/cli/entrypoint.py · vibe/core/paths · vibe/setup</div></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Choose a delivery path</h3><p>Interactive mode starts Textual or the opt-in Rust TUI; <code>--prompt</code> starts the headless runner; <code>vibe-acp</code> serves editors. Each becomes an app-server client.</p><div class="path">vibe/cli/cli.py · vibe/cli/programmatic.py · vibe/acp/entrypoint.py</div></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Handshake over JSON-RPC</h3><p>The client sends <code>initialize</code>, advertises callback and client-tool capabilities, then sends <code>initialized</code>. Ordinary requests are rejected before this handshake.</p><div class="path">vibe/app_server/host.py · client.py · server.py · protocol.py</div></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Open, resume, or continue</h3><p>The host starts a blank session, loads one by ID, or resolves the latest eligible session. Only now does the selected backend create or restore runtime state.</p><div class="path">vibe/app_server/session.py · _session_backend_port.py · _runtime.py</div></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Build a canonical snapshot</h3><p>The client receives public session history, active callbacks, turn state, queue state, resources, and an event watermark, then subscribes to ordered updates.</p><div class="path">vibe/app_server/models.py · events.py · client_state.py</div></div></div>
+        </div>
+      </section>
+
+      <section id="turn">
+        <div class="section-head">
+          <div><span class="section-no">04 / THE LOOP</span><h2>What happens in<br>one agent turn.</h2></div>
+          <p>A “turn” can contain many model steps. The loop continues while the latest model response asks for tools, then stops when it produces a final assistant response.</p>
+        </div>
+        <div class="loop-visual">
+          <div class="loop-step"><span class="num">01</span><b>Accept input</b><small>Normalize text, images, mentions, and resources.</small></div>
+          <div class="loop-step"><span class="num">02</span><b>Prepare context</b><small>Inject skills/files and run limits or auto-compaction.</small></div>
+          <div class="loop-step"><span class="num">03</span><b>Call model</b><small>Stream reasoning, text, usage, and typed tool calls.</small></div>
+          <div class="loop-step"><span class="num">04</span><b>Gate tools</b><small>Validate arguments, hooks, policy, and user approval.</small></div>
+          <div class="loop-step"><span class="num">05</span><b>Execute</b><small>Run independent calls concurrently and stream output.</small></div>
+          <div class="loop-step"><span class="num">06</span><b>Commit result</b><small>Append tool messages, save state, and continue or finish.</small></div>
+          <div class="loop-back">↖ tool results become model context; repeat from step 02</div>
+        </div>
+        <div class="tabs" data-tabs>
+          <div class="tablist" role="tablist" aria-label="Turn details">
+            <button class="tab" role="tab" aria-selected="true" data-tab="streaming">Streaming</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="concurrency">Concurrency</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="middleware">Middleware</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="events">Events</button>
+          </div>
+          <div class="tabpanel active" role="tabpanel" data-panel="streaming"><h3>Output arrives incrementally</h3><p><code>AgentLoop.act()</code> is an async generator. Streaming model chunks become <code>ReasoningEvent</code>, <code>AssistantEvent</code>, and early <code>ToolCallEvent</code> values. The app server projects those into stable public history entries while clients repaint.</p></div>
+          <div class="tabpanel" role="tabpanel" data-panel="concurrency"><h3>A batch of calls can run in parallel</h3><p>When one assistant message contains multiple tool calls, Vibe creates one task per call and funnels events through a queue. Cancellation propagates to unfinished tasks. A sentinel closes the batch only after all tasks settle.</p></div>
+          <div class="tabpanel" role="tabpanel" data-panel="middleware"><h3>Policy runs before every model step</h3><p>Turn, price, and token limits can stop the loop. Auto-compaction can replace old context with a summary. Context warnings inject guidance, and plan mode adds read-only reminders. A context-overflow failure can trigger one reactive compaction and retry.</p></div>
+          <div class="tabpanel" role="tabpanel" data-panel="events"><h3>Typed events decouple engine and UI</h3><p>Core emits user, assistant, reasoning, tool, approval, compaction, title, hook, and lifecycle events. The app server turns them into public message, reasoning, effect, callback, checkpoint, and notice entries with stable IDs.</p></div>
+        </div>
+        <pre aria-label="Simplified agent loop pseudocode">open_user_turn()
+while true:
+    decision = middleware.before_turn(context)
+    if decision.stop: break
+    if decision.compact: compact_context()
+
+    response = stream_model(messages, available_tool_schemas)
+    emit(response.text, response.reasoning, response.tool_calls)
+
+    if response.tool_calls:
+        results = await run_tools_concurrently(response.tool_calls)
+        append(results)
+        save_session()
+        continue
+
+    run_post_agent_hooks()
+    save_session()
+    break</pre>
+      </section>
+
+      <section id="tools">
+        <div class="section-head">
+          <div><span class="section-no">05 / TOOLS & SAFETY</span><h2>Capabilities with<br>guardrails.</h2></div>
+          <p>Tools are Pydantic-typed ports into side effects. Every call has validated arguments, a permission decision, streamed progress, and a typed final result or error.</p>
+        </div>
+        <div class="card-grid">
+          <article class="card"><p class="kicker">1 · Discover</p><h3>Build the catalogue</h3><p>Load built-ins, configured paths, project and user tools, MCP tools, and connector tools. Apply per-source and global enable/disable filters.</p></article>
+          <article class="card violet"><p class="kicker">2 · Validate</p><h3>Parse model arguments</h3><p>The model’s JSON is validated against the tool’s Pydantic argument type before execution. Invalid calls become model-visible tool failures.</p></article>
+          <article class="card yellow"><p class="kicker">3 · Pre-hook</p><h3>Inspect or rewrite</h3><p>Matching <code>pre_tool</code> hooks may deny a call or fully replace its input. Rewritten arguments are validated again.</p></article>
+          <article class="card orange"><p class="kicker">4 · Permission</p><h3>Allow, ask, or deny</h3><p>Config, allowlists, denylists, sensitive patterns, workspace boundaries, session grants, or smart classification determine the verdict.</p></article>
+          <article class="card blue"><p class="kicker">5 · Execute</p><h3>Run through one contract</h3><p>Tool output may stream. File-changing tools can capture a before-state checkpoint. Some I/O can be delegated to an authenticated client capability.</p></article>
+          <article class="card red"><p class="kicker">6 · Post-hook</p><h3>Audit or transform</h3><p><code>post_tool</code> hooks see status, duration, output, and errors. They may replace model-visible output or append context.</p></article>
+        </div>
+        <div class="callout danger" style="margin-top:1rem"><p><strong>Safety is layered, not a single prompt.</strong> Workspace trust controls project-provided configuration. Tool policy controls side effects. Shell analysis inspects nested commands and outside-directory paths. Public projections redact secrets. Auto-approve intentionally bypasses prompts and should be used cautiously.</p></div>
+        <div class="table-wrap" style="margin-top:1rem">
+          <table>
+            <thead><tr><th>Built-in family</th><th>What it gives the model</th><th>Typical risk boundary</th></tr></thead>
+            <tbody>
+              <tr><td>read_file / grep</td><td>Targeted repository inspection</td><td>Outside-workspace reads</td></tr>
+              <tr><td>write_file / edit</td><td>Create or patch source files</td><td>Path scope and active agent policy</td></tr>
+              <tr><td>bash / managed shells</td><td>Tests, builds, Git, and arbitrary commands</td><td>Semantic command analysis, allow/deny rules, approval</td></tr>
+              <tr><td>todo</td><td>Visible task-state tracking</td><td>Session-local state</td></tr>
+              <tr><td>ask_user_question</td><td>Structured clarification</td><td>Explicit callback to the client</td></tr>
+              <tr><td>task</td><td>Delegate to a named subagent</td><td>Only subagent profiles; depth limited to one</td></tr>
+              <tr><td>skill</td><td>Load reusable instructions on demand</td><td>Discovery scope and invocation policy</td></tr>
+              <tr><td>web_search / web_fetch</td><td>Retrieve external information</td><td>Network tool policy</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="context">
+        <div class="section-head">
+          <div><span class="section-no">06 / CONTEXT & MEMORY</span><h2>What the model sees<br>is carefully assembled.</h2></div>
+          <p>The visible transcript, private durable session, and current model context are related but intentionally different representations.</p>
+        </div>
+        <div class="card-grid">
+          <article class="card orange"><p class="kicker">System context</p><h3>Identity and operating rules</h3><p>Built-in or custom prompt, OS and shell guidance, available tools and skills, project path, Git metadata, additional roots, and trusted <code>AGENTS.md</code> instructions.</p></article>
+          <article class="card blue"><p class="kicker">Conversation</p><h3>Messages and tool outcomes</h3><p>User input, assistant responses, reasoning metadata, function calls, and tool responses are maintained as typed <code>LLMMessage</code> values.</p></article>
+          <article class="card"><p class="kicker">Compaction</p><h3>A boundary, not a new session</h3><p>Vibe summarizes older work, preserves recent user messages, appends a marked compaction checkpoint, and sends only that boundary plus newer messages on later calls.</p></article>
+        </div>
+        <div class="thesis">
+          <div><h3>Durability model</h3><p>Ordinary message writes are append-friendly; metadata writes are atomic. A stored session includes conversation state, metadata, statistics, tool availability, and resumability data. It does not make in-flight work crash-recoverable.</p></div>
+          <div><h3>Rewind model</h3><p>A rewind can fork a new session and preserve the source, or explicitly truncate in place. Optional file restoration uses checkpoints captured around edits and remains separate from transcript persistence mode.</p></div>
+        </div>
+        <div class="callout"><p><strong>Public state is lossy by design.</strong> Clients receive safe, renderable <code>PublicSessionState</code> and page history with opaque cursors. Only the server reads private session files or reconstructs the engine.</p></div>
+      </section>
+
+      <section id="configuration">
+        <div class="section-head">
+          <div><span class="section-no">07 / CONFIGURATION</span><h2>Eight layers.<br>One effective snapshot.</h2></div>
+          <p><code>VibeConfigSchema</code> is canonical. Each field has validation and merge behavior. Higher layers override lower ones, while structured fields may replace, union, concatenate, or merge.</p>
+        </div>
+        <div class="layer-stack" aria-label="Configuration precedence from low to high">
+          <div class="layer"><b>01</b><strong>Schema defaults</strong><span>Always present</span></div>
+          <div class="layer"><b>02</b><strong>GrowthBook experiments</strong><span>Server-supplied rollout assignments</span></div>
+          <div class="layer"><b>03</b><strong>User TOML</strong><span><code>~/.vibe/config.toml</code></span></div>
+          <div class="layer"><b>04</b><strong>Trusted project TOML</strong><span>Nearest discovered <code>.vibe/config.toml</code></span></div>
+          <div class="layer"><b>05</b><strong>Environment</strong><span><code>VIBE_*</code> values</span></div>
+          <div class="layer"><b>06</b><strong>Session overrides</strong><span>CLI flags and ephemeral runtime choices</span></div>
+          <div class="layer"><b>07</b><strong>Agent profile</strong><span>Tools, model, prompt, and policy for the active mode</span></div>
+          <div class="layer"><b>08</b><strong>Admin policy</strong><span>Organization-enforced values; highest priority</span></div>
+        </div>
+        <div class="callout good"><p>Attached clients never edit TOML directly. They call typed <code>config/read</code>, <code>config/write</code>, or <code>config/reload</code> resources. The app server validates the prospective merged config, writes atomically where applicable, rebuilds derived state, and returns the canonical runtime snapshot.</p></div>
+      </section>
+
+      <section id="extensions">
+        <div class="section-head">
+          <div><span class="section-no">08 / EXTENSIONS</span><h2>Seven ways to<br>change the behavior.</h2></div>
+          <p>Extensions are discovered deterministically, filtered by configuration, and kept outside startup-critical paths until activated.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Mechanism</th><th>Purpose</th><th>Where it enters</th></tr></thead>
+            <tbody>
+              <tr><td>Agent profiles</td><td>Bundle a prompt, model, tools, permissions, and safety posture.</td><td>Built-ins plus user/project <code>agents/*.toml</code></td></tr>
+              <tr><td>Subagents</td><td>Delegate bounded work without filling the parent’s context.</td><td><code>task</code> tool creates server-owned child sessions</td></tr>
+              <tr><td>Skills</td><td>Load reusable instructions explicitly or when the model sees a match.</td><td><code>SKILL.md</code> in standard, project, user, custom, or registry sources</td></tr>
+              <tr><td>Hooks</td><td>Gate, audit, rewrite, or retry around agent and tool lifecycle points.</td><td>Project and user <code>hooks.toml</code>; JSON over subprocess stdin/stdout</td></tr>
+              <tr><td>MCP servers</td><td>Add remote or local tools through Model Context Protocol.</td><td>stdio, HTTP, or streamable HTTP with static auth or OAuth</td></tr>
+              <tr><td>Connectors</td><td>Expose authenticated workspace integrations.</td><td>Server-owned discovery, authentication, tools, and public status</td></tr>
+              <tr><td>Custom tools</td><td>Add Python <code>BaseTool</code> implementations.</td><td>Configured, project, and user tool paths; deprecated in favor of skills</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-grid" style="margin-top:1rem">
+          <article class="card blue"><p class="kicker">Ask</p><h3>Approval first</h3><p>Normal agent; tool calls generally pass through the approval policy.</p></article>
+          <article class="card"><p class="kicker">Plan</p><h3>Read-only exploration</h3><p>Writes are denied except to the dedicated plans location.</p></article>
+          <article class="card orange"><p class="kicker">Accept edits</p><h3>Default mode</h3><p>File edits are auto-approved; other operations keep their policy.</p></article>
+          <article class="card yellow"><p class="kicker">Smart approve</p><h3>Classified risk</h3><p>Unified Harness classifies calls and prompts only for risky ones.</p></article>
+          <article class="card red"><p class="kicker">Auto approve</p><h3>No prompts</h3><p>Bypasses tool permission prompts. Fast, but intentionally high-risk.</p></article>
+          <article class="card violet"><p class="kicker">Explore / Lean</p><h3>Specialized profiles</h3><p>A read-only built-in subagent and an installable Lean theorem-proving mode.</p></article>
+        </div>
+      </section>
+
+      <section id="surfaces">
+        <div class="section-head">
+          <div><span class="section-no">09 / SURFACES</span><h2>Same runtime,<br>different experience.</h2></div>
+          <p>Every delivery surface uses the public app-server facade. That keeps session and tool behavior aligned while allowing each client to own presentation.</p>
+        </div>
+        <div class="tabs" data-tabs>
+          <div class="tablist" role="tablist" aria-label="Delivery surfaces">
+            <button class="tab" role="tab" aria-selected="true" data-tab="textual">Textual TUI</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="rust">Rust TUI</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="acp">ACP</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="headless">Headless</button>
+          </div>
+          <div class="tabpanel active" role="tabpanel" data-panel="textual"><h3>Python interactive client</h3><p>Textual owns widgets, keyboard behavior, transcript rendering, autocomplete, local clipboard integration, voice UX, and screens. It consumes <code>AppServerSession</code>; production code under <code>vibe/cli/textual_ui</code> is explicitly kept free of core imports.</p></div>
+          <div class="tabpanel" role="tabpanel" data-panel="rust"><h3>Thin Ratatui client</h3><p>The optional <code>VIBE_CLI=rust</code> path launches <code>vibe-rs</code>. It talks newline-delimited JSON-RPC over stdio to the Python app server and follows a unidirectional <code>Action → reduce(AppStore) → Effects</code> architecture. It does not duplicate the agent runtime.</p></div>
+          <div class="tabpanel" role="tabpanel" data-panel="acp"><h3>Editor and IDE adapter</h3><p><code>vibe-acp</code> translates Agent Client Protocol sessions, prompts, modes, tool updates, elicitation, and client filesystem or terminal calls to the same app-server methods and events used by the TUIs.</p></div>
+          <div class="tabpanel" role="tabpanel" data-panel="headless"><h3>Programmatic CLI</h3><p><code>vibe --prompt</code> starts the same local harness, consumes public events, denies unresolved callbacks, and outputs final text, a JSON history array, or newline-delimited streaming JSON. Turn, cost, token, and tool filters are session options.</p></div>
+        </div>
+      </section>
+
+      <section id="source-map">
+        <div class="section-head">
+          <div><span class="section-no">10 / SOURCE MAP</span><h2>Where to look<br>in the repository.</h2></div>
+          <p>The fastest way to read Vibe is by following ownership boundaries, not by opening files alphabetically.</p>
+        </div>
+        <div class="tree">
+          <div class="tree-row"><code>vibe/core/agent_loop/</code><span>The legacy Python engine: opens turns, calls the model, executes tools, compacts context, emits typed events.</span></div>
+          <div class="tree-row"><code>vibe/app_server/</code><span>The harness boundary: JSON-RPC, session backends, queues, public projections, resources, callbacks, lifecycle.</span></div>
+          <div class="tree-row"><code>vibe/core/tools/</code><span><code>BaseTool</code>, discovery, filtering, permissions, built-ins, MCP and connector adapters, terminal runtime.</span></div>
+          <div class="tree-row"><code>vibe/core/config/</code><span>Pydantic schema, eight-layer orchestrator, migrations, models, environment and persistent sources.</span></div>
+          <div class="tree-row"><code>vibe/core/session/</code><span>JSONL messages, atomic metadata, loading, indexing, leases, titles, and cross-harness interop.</span></div>
+          <div class="tree-row"><code>vibe/core/checkpoints/</code><span>File snapshots that support review and optional rewind restoration.</span></div>
+          <div class="tree-row"><code>vibe/core/skills/</code><span>Agent Skills parsing, discovery, invocation policy, built-ins, and registry materialization.</span></div>
+          <div class="tree-row"><code>vibe/core/hooks/</code><span>Typed pre-tool, post-tool, and post-agent subprocess pipelines.</span></div>
+          <div class="tree-row"><code>vibe/cli/textual_ui/</code><span>Python terminal presentation and interaction, deliberately downstream of the app-server API.</span></div>
+          <div class="tree-row"><code>vibe/cli-rust/</code><span>Rust terminal client, reducer, effects, protocol adapter, UI, commands, selection, and voice.</span></div>
+          <div class="tree-row"><code>vibe/acp/</code><span>ACP server, content and session translation, auth, client tools, commands, and updates.</span></div>
+          <div class="tree-row"><code>harness/</code><span>Bundled Unified Harness native/runtime source, selected behind the same app-server backend port.</span></div>
+          <div class="tree-row"><code>tests/</code><span>Mirrors source ownership; focused app-server, core, ACP, TUI, protocol, safety, and boundary coverage.</span></div>
+        </div>
+      </section>
+
+      <section id="learn">
+        <div class="section-head">
+          <div><span class="section-no">11 / LEARNING PATH</span><h2>Read it in<br>this order.</h2></div>
+          <p>This sequence builds a working model before exposing implementation detail.</p>
+        </div>
+        <div class="flow">
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Run the product</h3><p>Try interactive mode, a tool call that needs approval, <code>/compact</code>, <code>/resume</code>, and <code>vibe --prompt "…" --output streaming</code>.</p></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Read the architecture decisions</h3><p>Start with ADRs 0001–0007 and 0009. They explain ownership rules that raw call graphs cannot.</p></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Trace a headless request</h3><p>Follow <code>cli.py → programmatic.py → LocalHarness → AppServerHost → AppServerSession.act()</code>. This avoids UI noise.</p></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Trace the engine loop</h3><p>Read <code>AgentLoop.act()</code>, <code>_conversation_loop()</code>, streaming response handling, and <code>_run_tools_concurrently()</code>.</p></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Study one tool end to end</h3><p>Pick <code>read_file</code> or <code>edit</code>: schema, permission resolution, hook pipeline, execution, event projection, and rendering.</p></div></div>
+          <div class="flow-item"><div class="flow-marker"></div><div class="flow-body"><h3>Then choose a specialty</h3><p>Configuration, persistence, skills, MCP, subagents, Textual, Rust, ACP, voice, worktrees, or the Unified Harness backend.</p></div></div>
+        </div>
+        <div class="callout"><p><strong>Important migration detail:</strong> the app server can select a legacy Python <code>AgentLoop</code> backend or the bundled Unified Harness backend through a common session-backend port. The Unified Harness is the current default; <code>--legacy-harness</code> is the escape hatch. Treat the app-server contract as stable architecture; backend internals are implementation choices.</p></div>
+      </section>
+
+      <section id="sources">
+        <div class="section-head">
+          <div><span class="section-no">12 / SOURCES</span><h2>Primary references.</h2></div>
+          <p>This guide was built from the repository at commit <code>7c19608</code>, release <code>2.25.8</code>. The project evolves quickly; source and ADRs remain authoritative.</p>
+        </div>
+        <div class="source-list">
+          <a class="source-link" href="https://github.com/mistralai/mistral-vibe"><b>Repository ↗</b>mistralai/mistral-vibe</a>
+          <a class="source-link" href="https://github.com/mistralai/mistral-vibe/blob/main/README.md"><b>Product guide ↗</b>README.md</a>
+          <a class="source-link" href="https://github.com/mistralai/mistral-vibe/tree/main/docs/adr"><b>Architecture decisions ↗</b>docs/adr/</a>
+          <a class="source-link" href="https://github.com/mistralai/mistral-vibe/blob/main/vibe/core/agent_loop/_loop.py"><b>Agent loop ↗</b>vibe/core/agent_loop/_loop.py</a>
+          <a class="source-link" href="https://github.com/mistralai/mistral-vibe/blob/main/vibe/app_server/server.py"><b>App server ↗</b>vibe/app_server/server.py</a>
+          <a class="source-link" href="https://github.com/mistralai/mistral-vibe/blob/main/vibe/core/tools/base.py"><b>Tool contract ↗</b>vibe/core/tools/base.py</a>
+          <a class="source-link" href="https://github.com/mistralai/mistral-vibe/blob/main/vibe/core/config/default_orchestrator.py"><b>Config layers ↗</b>vibe/core/config/default_orchestrator.py</a>
+          <a class="source-link" href="https://github.com/mistralai/mistral-vibe/blob/main/docs/adr/0009-app-server-boundary.md"><b>Harness boundary ↗</b>ADR 0009</a>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <p>Independent educational map derived from Mistral Vibe’s source and documentation.</p>
+      <p>Last source pass: release 2.25.8 · Apache-2.0 project</p>
+    </div>
+  </footer>
+
+  <script>
+    const body = document.body;
+    const toggle = document.querySelector("#theme-toggle");
+    const savedTheme = localStorage.getItem("vibe-guide-theme");
+    if (savedTheme === "light") body.classList.add("light");
+    toggle.textContent = body.classList.contains("light") ? "☾" : "☼";
+    toggle.addEventListener("click", () => {
+      body.classList.toggle("light");
+      const light = body.classList.contains("light");
+      toggle.textContent = light ? "☾" : "☼";
+      localStorage.setItem("vibe-guide-theme", light ? "light" : "dark");
+    });
+
+    document.querySelectorAll("[data-tabs]").forEach(group => {
+      const tabs = [...group.querySelectorAll("[data-tab]")];
+      const panels = [...group.querySelectorAll("[data-panel]")];
+      tabs.forEach(tab => tab.addEventListener("click", () => {
+        tabs.forEach(item => item.setAttribute("aria-selected", String(item === tab)));
+        panels.forEach(panel => panel.classList.toggle("active", panel.dataset.panel === tab.dataset.tab));
+      }));
+    });
+
+    const links = [...document.querySelectorAll(".toc a")];
+    const sections = links.map(link => document.querySelector(link.getAttribute("href"))).filter(Boolean);
+    const observer = new IntersectionObserver(entries => {
+      entries.filter(entry => entry.isIntersecting).forEach(entry => {
+        links.forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${entry.target.id}`));
+      });
+    }, { rootMargin: "-20% 0px -70% 0px" });
+    sections.forEach(section => observer.observe(section));
+  </script>
+</body>
+</html>
