@@ -290,7 +290,7 @@ Each subagent's tool functions are wrapped so every call carries `agent_name` in
 |---|---|
 | `praval`, `rich`, `textual` importable (versions shown) | yes |
 | Python 3.12 to 3.14 | yes |
-| `mcp` importable | yes if MCP is a required dependency, otherwise only when servers are configured (SPEC.md, open decision 11) |
+| `mcp` importable | yes if MCP is a required dependency, otherwise only when servers are configured (SPEC.md, open decision 10) |
 | Effective UID is not 0 | yes |
 | `bash` or `zsh` found | yes |
 | State directory writable | yes |

@@ -97,7 +97,7 @@ Engine. A new app server, written for this project, implements the server side o
 | Skills, plugins, connectors, loops, git worktrees, teleport, remote projects, voice and TTS, update notifier, VS Code promotion | Removed or hidden in v1. |
 | ACP entry point (`vibe-acp`) | Out of v1; it drives Vibe's core, not the Praval engine. |
 
-Code lives in the GitHub fork `aiexplorations/praval-code` (forked from `mistralai/mistral-vibe`, with `upstream` pointing there), developed on branches, with this specification under `docs/praval-code/`. Apache 2.0 obligations apply: keep `LICENSE`, add a `NOTICE` stating the derivation and changes, and mark modified files. Upstream changes are merged by policy (open decision 12). OpenCode remains a design reference for features, not a code source.
+Code lives in the GitHub fork `aiexplorations/praval-code` (forked from `mistralai/mistral-vibe`, with `upstream` pointing there), developed on branches, with this specification under `docs/praval-code/`. Apache 2.0 obligations apply: keep `LICENSE`, add a `NOTICE` stating the derivation and changes, and mark modified files. Upstream changes are merged by policy (open decision 11). OpenCode remains a design reference for features, not a code source.
 
 Agent loop. Uses `Agent.astream()` so tool calls, tool results, text deltas and usage arrive as events. The async API is required: Praval registers MCP tools as async-only and refuses to run them through the sync `stream()` or `chat()` (REFERENCES.md, section 2). With tools registered, Praval 0.8.3 runs the whole tool loop first and yields these events only after the final round (REFERENCES.md, section 2), so live activity comes from `praval-code`'s tool wrappers (section 5.7). The tool-call loop itself is inside Praval; its round limit is `max_tool_rounds` (Praval default 8, `praval-code` default 40, configurable). `praval-code` uses the `Agent` class directly rather than the `@agent` decorator and the global reef, because the TUI is a request/response loop and subagents are created at runtime.
 
@@ -148,7 +148,7 @@ If a format cannot be read, the tool returns an error that names the missing cap
 
 All web access goes out from the user's machine, over the user's own network connection (goals 7 and 9). Provider-hosted search tools (which run on the provider's servers) are not used.
 
-- `web_search` returns titles, URLs and snippets for a query. Backends: `duckduckgo` (no key; uses DuckDuckGo's HTML results page, which is unofficial and may break or be rate limited) and `searxng` (a SearXNG instance the user configures by URL). No search API works without either a key or a scraped page, so the default backend is open decision 9 and spike S13 measures reliability. A configured SearXNG URL on a private address is exempt from the private-network refusal below.
+- `web_search` returns titles, URLs and snippets for a query. Backends: `duckduckgo` (no key; uses DuckDuckGo's HTML results page, which is unofficial and may break or be rate limited) and `searxng` (a SearXNG instance the user configures by URL). No search API works without either a key or a scraped page, so the default backend is open decision 8 and spike S13 measures reliability. A configured SearXNG URL on a private address is exempt from the private-network refusal below.
 - `fetch_url` uses `urllib` with a 20 s timeout, 2 MB cap, and `http`/`https` only.
 - `curl`, `wget`, `ftp` and similar run through `run_shell`. They are never classified read-only, so each needs approval in `ask` mode. None is required: `curl` ships with macOS, `wget` does not, and `praval-code doctor` reports which are present.
 
@@ -212,7 +212,7 @@ Git is not the undo mechanism: the journal is (section 6.3). Outside a repositor
 
 ### 5.11 Verified output
 
-Goal 11 asks the harness to optimise for confident, verified output. The v1 rule is concrete: the final answer states what was verified and how (for example, tests run and their result, a file re-read after an edit, a command's exit code), and states plainly what was not verified. Claims about files and command results must come from tool results in the current session. Whether an evaluator subagent (section 7) should check answers automatically is open decision 10.
+Goal 11 asks the harness to optimise for confident, verified output. The v1 rule is concrete: the final answer states what was verified and how (for example, tests run and their result, a file re-read after an edit, a command's exit code), and states plainly what was not verified. Claims about files and command results must come from tool results in the current session. Whether an evaluator subagent (section 7) should check answers automatically is open decision 9.
 
 ## 6. Safety, approval and reversibility
 
@@ -337,7 +337,7 @@ Python packages (installed with pip into a virtual environment):
 | Vibe UI dependencies | the TUI | `textual`, `textual-speedups`, `rich`, `pyperclip`, `watchfiles` and others; the exact set is what remains after removing the replaced parts (below) |
 | `pypdf` (extra `docs`) | PDF text when the provider has no file input | optional |
 
-Vibe pins 99 packages, including ones this fork removes with the parts they serve: `mistralai`, `sentry-sdk`, `google-auth`, `keyring`, `gitpython`, `tree-sitter`, `miniaudio`, `websockets`. The dependency list in the fork is rebuilt from the kept modules and recorded in REFERENCES.md once spike S15 settles which UI modules stay. Goal 4's short list now applies to what this project adds, not to the UI it inherits. Measured with `pip install --dry-run` against this project's venv (44 packages installed): the MCP extra adds 15 packages, including a server stack (`starlette`, `uvicorn`) the client does not run, and Textual adds 8. Making MCP optional would shorten the list, at the cost of goal 13 working only after a second install (open decision 11). `tomllib` (config reading) requires Python 3.11. Praval requires 3.10 to 3.14 and Vibe requires 3.12 or later, so `praval-code` requires 3.12 to 3.14. The system Python on a stock Mac is older, so a Python 3.12+ is a prerequisite and `praval-code doctor` checks for it.
+Vibe pins 99 packages, including ones this fork removes with the parts they serve: `mistralai`, `sentry-sdk`, `google-auth`, `keyring`, `gitpython`, `tree-sitter`, `miniaudio`, `websockets`. The dependency list in the fork is rebuilt from the kept modules and recorded in REFERENCES.md once spike S15 settles which UI modules stay. Goal 4's short list now applies to what this project adds, not to the UI it inherits. Measured with `pip install --dry-run` against this project's venv (44 packages installed): the MCP extra adds 15 packages, including a server stack (`starlette`, `uvicorn`) the client does not run, and Textual adds 8. Making MCP optional would shorten the list, at the cost of goal 13 working only after a second install (open decision 10). `tomllib` (config reading) requires Python 3.11. Praval requires 3.10 to 3.14 and Vibe requires 3.12 or later, so `praval-code` requires 3.12 to 3.14. The system Python on a stock Mac is older, so a Python 3.12+ is a prerequisite and `praval-code doctor` checks for it.
 
 System binaries: none required. Used if present: `rg` (faster search), `textutil` (macOS, rtf/doc/odt), `cp` with copy-on-write support (checkpoints), `git` (section 5.10), `curl` and `wget` (section 5.5), and the commands that configured stdio MCP servers run. The user's `bash` or `zsh` is required to run commands.
 
@@ -381,9 +381,8 @@ Each scenario is written to become a case in an offline eval suite (`praval-code
 4. Provider API keys for spikes and live tests (needed for S1 to S6), and whether Ollama may be installed for S3.
 5. Environment variables use the prefix `PRAVAL_CODE_`. Praval itself reads `PRAVAL_*` names (for example `PRAVAL_DEFAULT_MODEL`), so spike S1 must confirm that Praval's settings loader ignores unknown `PRAVAL_CODE_*` variables.
 6. The style guide at `~/aiexplr-style-guide.md` is referenced in the global instructions but does not exist on this machine, so these documents follow the rules stated in CLAUDE.md (no em-dashes, direct tone).
-7. Decided (2026-10-05): the name is `praval-code` (command and distribution), `praval_code` for Python identifiers.
-8. Decided (2026-10-05): fork Mistral Vibe, keep its Textual UI, and replace its app server and core with a Praval engine behind Vibe's protocol (section 4).
-9. Default `web_search` backend: `duckduckgo` (no setup, unofficial and fragile) or `searxng` (reliable, needs an instance). Spike S13 informs this.
-10. Whether an evaluator subagent checks final answers automatically (goal 11), and for which task types.
-11. Whether `praval[mcp]` is a required dependency or an optional extra.
-12. Upstream policy for the fork: merge Vibe releases regularly (UI fixes, at the cost of conflicts where the fork changed files), or freeze at 2.25.8 and cherry-pick.
+7. Decided (2026-10-05): fork Mistral Vibe, keep its Textual UI, and replace its app server and core with a Praval engine behind Vibe's protocol (section 4).
+8. Default `web_search` backend: `duckduckgo` (no setup, unofficial and fragile) or `searxng` (reliable, needs an instance). Spike S13 informs this.
+9. Whether an evaluator subagent checks final answers automatically (goal 11), and for which task types.
+10. Whether `praval[mcp]` is a required dependency or an optional extra.
+11. Upstream policy for the fork: merge Vibe releases regularly (UI fixes, at the cost of conflicts where the fork changed files), or freeze at 2.25.8 and cherry-pick.
